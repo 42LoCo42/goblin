@@ -80,7 +80,7 @@
         '';
 
       svc = import ./svc.nix { inherit pkgs; };
-      services = rec {
+      svcDB = svc.mkDB rec {
         mount-dev = svc.oneshot {
           up = "mount -t devtmpfs dev /dev";
         };
@@ -114,8 +114,6 @@
           inherit sysinit getty-console;
         };
       };
-
-      svcDB = svc.mkDB services;
 
       init = with pkgs; writeScript "init" ''
         #!${execline}/bin/execlineb -P
@@ -162,7 +160,7 @@
     in
     {
       packages.${pkgs.system} = {
-        inherit kernel preinit initrd root boot svc services svcDB;
+        inherit kernel preinit initrd root boot;
       };
 
       # devShells.${pkgs.system}.default = pkgs.mkShell {

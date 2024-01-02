@@ -4,7 +4,8 @@
   oneshot = { deps ? { }, up, down ? "", extra ? { } }: service {
     type = "oneshot";
     inherit deps;
-    extra = extra // { inherit up down; };
+    extra = extra // { inherit up; } //
+      (if down != "" then { inherit down; } else { });
   };
 
   longrun = { deps ? { }, run, extra ? { } }: service {
@@ -15,7 +16,7 @@
 
   service = { type, deps, extra }: ''
     echo ${type} > type
-    mkdir dependencies.d
+    ${if deps != {} then "mkdir dependencies.d" else ""}
   '' + pipe deps [
     (builtins.attrNames)
     (map (i: "touch dependencies.d/${i}"))
