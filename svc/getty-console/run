@@ -1,3 +1,2 @@
 #!/bin/execlineb -P
-foreground { up }
-exec getty 115200 /dev/console
+getty 115200 /dev/console

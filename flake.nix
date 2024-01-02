@@ -56,12 +56,18 @@
       '';
 
       finish = with pkgs; writeScript "finish" ''
-        #!${busybox}/bin/poweroff -f
-      '';
-
-      up = with pkgs; writeScriptBin "up" ''
-        #!${busybox}/bin/sh
-        awk '{printf "[1;32mUp after %s seconds![m\n", $1}' /proc/uptime
+        #!${execline}/bin/execlineb -P
+        foreground { echo "\n[1;33mSending SIGTERM...[m" }
+        foreground { kill -SIGTERM -1 }
+        foreground { sleep 2 }
+        foreground { echo "[1;33mSending SIGKILL...[m" }
+        foreground { kill -SIGKILL -1 }
+        foreground { echo "[1;33mUnmounting filesystems...[m" }
+        foreground { umount -rat nodevtmpfs,proc,tmpfs,sysfs }
+        foreground { mount -o remount,ro / }
+        foreground { sync }
+        foreground { echo "[1;32mGoodbye![m" }
+        poweroff -f
       '';
 
       invfork = pkgs.runCommandLocal "invfork"
@@ -77,7 +83,7 @@
 
       init = with pkgs; writeScript "init" ''
         #!${execline}/bin/execlineb -P
-        export PATH ${execline}/bin:${s6}/bin:${s6-rc}/bin:${up}/bin:${busybox}/bin
+        export PATH ${execline}/bin:${s6}/bin:${s6-rc}/bin:${busybox}/bin
         foreground { sh -c "mount -t overlay -o lowerdir=$PATH,workdir=bin/work bin bin" }
         export PATH /bin
         foreground { echo "[1;33mStarting all services...[m" }
@@ -87,6 +93,7 @@
         ${invfork} { s6-svscan /run/s6/scan }
         foreground { s6-rc-init -c ${svc} -l /run/s6/live /run/s6/scan }
         foreground { s6-rc -l /run/s6/live start default }
+        awk "{printf \"\\e[1;32mUp after %s seconds!\\e[m\\n\", $1}" /proc/uptime
       '';
 
       root = with pkgs; runCommandLocal "root" { } ''
