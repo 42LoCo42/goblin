@@ -1,2 +1,0 @@
-#!/bin/execlineb -P
-getty 115200 /dev/console

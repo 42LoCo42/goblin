@@ -56,7 +56,7 @@
       '';
 
       poweroff = with pkgs; writeScript "poweroff" ''
-        #!${busybox}/bin/sh
+        #!${execline}/bin/execlineb -P
         kill -SIGTERM 1
       '';
 
@@ -79,9 +79,43 @@
           strip $out
         '';
 
-      svc = pkgs.runCommandLocal "svc" { } ''
-        ${pkgs.s6-rc}/bin/s6-rc-compile $out ${./svc}
-      '';
+      svc = import ./svc.nix { inherit pkgs; };
+      services = rec {
+        mount-dev = svc.oneshot {
+          up = "mount -t devtmpfs dev /dev";
+        };
+
+        mount-proc = svc.oneshot {
+          up = "mount -t proc proc /proc";
+        };
+
+        mount-sys = svc.oneshot {
+          up = "mount -t sysfs sys /sys";
+        };
+
+        hostname = svc.oneshot {
+          up = "hostname goblin";
+        };
+
+        getty-console = svc.longrun {
+          run = ''
+            #!${pkgs.execline}/bin/execlineb -P
+            getty 115200 /dev/console
+          '';
+          deps = { inherit mount-dev hostname; };
+          extra.down-signal = "SIGHUP";
+        };
+
+        sysinit = svc.bundle {
+          inherit mount-dev mount-proc mount-sys hostname;
+        };
+
+        all = svc.bundle {
+          inherit sysinit getty-console;
+        };
+      };
+
+      svcDB = svc.mkDB services;
 
       init = with pkgs; writeScript "init" ''
         #!${execline}/bin/execlineb -P
@@ -94,8 +128,8 @@
         foreground { ln -s ${poweroff} /run/s6/scan/.s6-svscan/SIGUSR2 }
         foreground { ln -s ${finish}   /run/s6/scan/.s6-svscan/finish  }
         ${invfork} { s6-svscan /run/s6/scan }
-        foreground { s6-rc-init -c ${svc} -l /run/s6/live /run/s6/scan }
-        foreground { s6-rc -l /run/s6/live start default }
+        foreground { s6-rc-init -c ${svcDB} -l /run/s6/live /run/s6/scan }
+        foreground { s6-rc -l /run/s6/live start all }
         awk "{printf \"\\e[1;32mUp after %s seconds!\\e[m\\n\", $1}" /proc/uptime
       '';
 
@@ -128,7 +162,7 @@
     in
     {
       packages.${pkgs.system} = {
-        inherit kernel preinit initrd root boot;
+        inherit kernel preinit initrd root boot svc services svcDB;
       };
 
       # devShells.${pkgs.system}.default = pkgs.mkShell {
