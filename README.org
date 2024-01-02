@@ -4,3 +4,4 @@ a very smol system, based on [[https://www.skarnet.org/software/s6/][s6]] & [[ht
 ** How
 - start with =nix run .#boot=
 - login with user =root= password =root=
+[[file:example.png]]
