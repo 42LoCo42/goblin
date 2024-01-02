@@ -1,8 +1,17 @@
 # goblin
-a very smol system, based on [[https://www.skarnet.org/software/s6/][s6]] & [[https://skarnet.org/software/s6-rc/][s6-rc]]
+a very smol system, based on s6 & s6-rc.
+the initramfs is only about 334 KiB in size.
 
-** How
+** how
 - start with =nix run github:42loco42/goblin=
 - login with user =root= password =root=
 - shutdown with =poweroff=
 [[file:example.png]]
+
+** what
+- [[https://www.busybox.net/][busybox]]
+- skarnet:
+  - [[https://skarnet.org/software/execline/][execline]]
+  - [[https://skarnet.org/software/s6/][s6]]
+  - [[https://skarnet.org/software/s6-rc/][s6-rc]]
+- [[https://tukaani.org/xz/][liblzma]]

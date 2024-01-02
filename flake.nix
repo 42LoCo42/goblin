@@ -18,22 +18,24 @@
 
       paths = drv: "${pkgs.closureInfo { rootPaths = drv; }}/store-paths";
 
-      preinit = with pkgs; writeScript "init" ''
-        #!${busybox}/bin/sh
-        PATH="${kmod}/bin:${busybox}/bin"
-        echo "[1;32mWelcome to goblin!["
+      tinit = pkgs.runCommandLocal "tinit"
+        {
+          src = ./tinit;
+          nativeBuildInputs = with pkgs; [ gcc musl pkg-config ];
+          buildInputs = with pkgs; [ (xz.override { enableStatic = true; }) ];
+        } ''
+        gcc                                     \
+          -Wall -Wextra -Werror                 \
+          -O3 -static -flto                     \
+          $src/*.c                              \
+          $(pkg-config --cflags --libs liblzma) \
+          -lssp                                 \
+          -o $out
+        strip $out
+      '';
 
-        log() { echo "[1;33m$*...[m"; }
-
-        log "Loading kernel modules"
-        modprobe -ad ${modules} 9p 9pnet_virtio virtio_pci overlay
-        mkdir rootfs
-
-        log "Mounting root filesystem"
-        mount -t 9p -o trans=virtio rootfs rootfs
-
-        log "Switching over"
-        exec switch_root rootfs init
+      preinit = pkgs.writeScript "init" ''
+        #!${tinit} ${modules}/insmod-list
       '';
 
       initrd = pkgs.runCommandLocal "init-img"
@@ -70,7 +72,7 @@
 
       invfork = pkgs.runCommandLocal "invfork"
         { nativeBuildInputs = with pkgs; [ gcc musl ]; } ''
-        gcc -Wall -Wextra -O3 -static ${./invfork.c} -o $out
+        gcc -Wall -Wextra -Werror -O3 -static -flto ${./invfork.c} -o $out
         strip $out
       '';
 
@@ -161,7 +163,7 @@
       };
 
       packages.${pkgs.system} = {
-        inherit initrd root;
+        inherit tinit initrd root;
       };
     };
 }
