@@ -4,5 +4,5 @@ a very smol system, based on [[https://www.skarnet.org/software/s6/][s6]] & [[ht
 ** How
 - start with =nix run github:42loco42/goblin#boot=
 - login with user =root= password =root=
-- shutdown with =kill -SIGABRT 1=
+- shutdown with =poweroff=
 [[file:example.png]]

@@ -55,12 +55,14 @@
         zstd -9 < $img > $out
       '';
 
+      poweroff = with pkgs; writeScript "poweroff" ''
+        #!${busybox}/bin/sh
+        kill -SIGTERM 1
+      '';
+
       finish = with pkgs; writeScript "finish" ''
         #!${execline}/bin/execlineb -P
-        foreground { echo "\n[1;33mSending SIGTERM...[m" }
-        foreground { kill -SIGTERM -1 }
-        foreground { sleep 2 }
-        foreground { echo "[1;33mSending SIGKILL...[m" }
+        foreground { echo "\n[1;33mKilling all processes...[m" }
         foreground { kill -SIGKILL -1 }
         foreground { echo "[1;33mUnmounting filesystems...[m" }
         foreground { umount -rat nodevtmpfs,proc,tmpfs,sysfs }
@@ -89,7 +91,8 @@
         foreground { echo "[1;33mStarting all services...[m" }
         foreground { mount -t tmpfs tmpfs /run  }
         foreground { mkdir -p /run/s6/scan/.s6-svscan }
-        foreground { cp ${finish} /run/s6/scan/.s6-svscan/finish }
+        foreground { ln -s ${poweroff} /run/s6/scan/.s6-svscan/SIGUSR2 }
+        foreground { ln -s ${finish}   /run/s6/scan/.s6-svscan/finish  }
         ${invfork} { s6-svscan /run/s6/scan }
         foreground { s6-rc-init -c ${svc} -l /run/s6/live /run/s6/scan }
         foreground { s6-rc -l /run/s6/live start default }
