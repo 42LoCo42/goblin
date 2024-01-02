@@ -79,15 +79,24 @@
       svc = import ./svc.nix { inherit pkgs; };
       svcDB = svc.mkDB rec {
         mount-dev = svc.oneshot {
-          up = "mount -t devtmpfs dev /dev";
+          up = ''
+            foreground { mkdir -p /dev }
+            mount -t devtmpfs dev /dev
+          '';
         };
 
         mount-proc = svc.oneshot {
-          up = "mount -t proc proc /proc";
+          up = ''
+            foreground { mkdir -p /proc }
+            mount -t proc proc /proc
+          '';
         };
 
         mount-sys = svc.oneshot {
-          up = "mount -t sysfs sys /sys";
+          up = ''
+            foreground { mkdir -p /sys }
+            mount -t sysfs sys /sys
+          '';
         };
 
         hostname = svc.oneshot {
@@ -95,12 +104,17 @@
         };
 
         getty-console = svc.longrun {
-          run = ''
-            #!${pkgs.execline}/bin/execlineb -P
-            getty 115200 /dev/console
-          '';
+          run = "getty 115200 /dev/console";
           deps = { inherit mount-dev hostname; };
           extra.down-signal = "SIGHUP";
+        };
+
+        nix-daemon = svc.longrun {
+          run = ''
+            redirfd -a 1 /run/nix-daemon.log
+            fdmove -c 2 1
+            ${pkgs.nix}/bin/nix daemon
+          '';
         };
 
         sysinit = svc.bundle {
@@ -108,36 +122,44 @@
         };
 
         all = svc.bundle {
-          inherit sysinit getty-console;
+          inherit sysinit getty-console nix-daemon;
         };
       };
 
       init = with pkgs; writeScript "init" ''
         #!${execline}/bin/execlineb -P
-        export PATH ${execline}/bin:${s6}/bin:${s6-rc}/bin:${busybox}/bin
-        foreground { sh -c "mount -t overlay -o lowerdir=$PATH,workdir=bin/work bin bin" }
+        export PATH ${execline}/bin:${s6}/bin:${s6-rc}/bin:${nix}/bin:${busybox}/bin
+
+        foreground { echo "[1;33mMaking / writeable...[m" }
+        foreground { mount -t tmpfs tmpfs /run }
+        foreground { mkdir -p /run/mnt /run/rw /run/wk }
+        foreground { mount -t overlay -o lowerdir=/,upperdir=/run/rw,workdir=/run/wk rootfs /run/mnt }
+        chroot /run/mnt
+
+        foreground { echo "[1;33mMount bin overlay...[m" }
+        foreground { mkdir bin }
+        foreground { sh -c "mount -t overlay -o lowerdir=$PATH bin bin" }
         export PATH /bin
-        foreground { echo "[1;33mStarting all services...[m" }
-        foreground { mount -t tmpfs tmpfs /run  }
+
+        foreground { echo "[1;33mStarting the system supervisor...[m" }
+        foreground { mount -t tmpfs tmpfs run }
         foreground { mkdir -p /run/s6/scan/.s6-svscan }
         foreground { ln -s ${poweroff} /run/s6/scan/.s6-svscan/SIGUSR2 }
         foreground { ln -s ${finish}   /run/s6/scan/.s6-svscan/finish  }
         ${invfork} { s6-svscan /run/s6/scan }
+
+        foreground { echo "[1;33mStarting all services...[m" }
         foreground { s6-rc-init -c ${svcDB} -l /run/s6/live /run/s6/scan }
         foreground { s6-rc -l /run/s6/live start all }
+
         awk "{printf \"\\e[1;32mUp after %s seconds!\\e[m\\n\", $1}" /proc/uptime
       '';
 
       root = with pkgs; runCommandLocal "root" { } ''
-        mkdir -p $out/{bin/work,dev,etc,proc,run,sys}
-        cd $out
-
-        mkdir -p nix/store
-        xargs -I% cp -r % nix/store < ${paths init}
-        ln -s ${init} init
-
-        echo 'root:x:0:0:System administrator:/:/bin/sh' > etc/passwd
-        echo 'root:${builtins.readFile ./root.hash}:1::::::' | tr -d '\n' > etc/shadow
+        mkdir -p $out/{nix/store,run}
+        ln -s ${init} $out/init
+        cp -r ${./etc} $out/etc
+        xargs -I% cp -r % $out/nix/store < ${paths init}
       '';
 
       # -drive id=disk,file=disk,if=none,format=raw

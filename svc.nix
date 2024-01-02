@@ -11,7 +11,7 @@
   longrun = { deps ? { }, run, extra ? { } }: service {
     type = "longrun";
     inherit deps;
-    extra = extra // { inherit run; };
+    extra = extra // { run = "#!${pkgs.execline}/bin/execlineb -P\n" + run; };
   };
 
   service = { type, deps, extra }: ''
