@@ -2,7 +2,6 @@
   outputs = { nixpkgs, ... }:
     let
       pkgs = import nixpkgs { system = "x86_64-linux"; };
-      inherit (pkgs.lib) pipe;
 
       kernel = pkgs.linux_latest;
       modules = pkgs.makeModulesClosure {
@@ -17,10 +16,7 @@
         firmware = [ ];
       };
 
-      paths = drv: pipe drv [
-        (i: pkgs.closureInfo { rootPaths = i; })
-        (i: "${i}/store-paths")
-      ];
+      paths = drv: "${pkgs.closureInfo { rootPaths = drv; }}/store-paths";
 
       preinit = with pkgs; writeScript "init" ''
         #!${busybox}/bin/sh
@@ -37,7 +33,7 @@
         mount -t 9p -o trans=virtio rootfs rootfs
 
         log "Switching over"
-        exec switch_root rootfs ${init}
+        exec switch_root rootfs init
       '';
 
       initrd = pkgs.runCommandLocal "init-img"
@@ -136,6 +132,7 @@
 
         mkdir -p nix/store
         xargs -I% cp -r % nix/store < ${paths init}
+        ln -s ${init} init
 
         echo 'root:x:0:0:System administrator:/:/bin/sh' > etc/passwd
         echo 'root:${builtins.readFile ./root.hash}:1::::::' | tr -d '\n' > etc/shadow
