@@ -73,11 +73,10 @@
       '';
 
       invfork = pkgs.runCommandLocal "invfork"
-        { nativeBuildInputs = with pkgs; [ gcc musl ]; }
-        ''
-          gcc -Wall -Wextra -O3 -static ${./invfork.c} -o $out
-          strip $out
-        '';
+        { nativeBuildInputs = with pkgs; [ gcc musl ]; } ''
+        gcc -Wall -Wextra -O3 -static ${./invfork.c} -o $out
+        strip $out
+      '';
 
       svc = import ./svc.nix { inherit pkgs; };
       svcDB = svc.mkDB rec {
@@ -144,7 +143,7 @@
 
       # -drive id=disk,file=disk,if=none,format=raw
       # -device virtio-blk-pci,drive=disk
-      boot = pkgs.writeShellScriptBin "boot" ''
+      boot = pkgs.writeShellScript "boot" ''
         ${pkgs.qemu}/bin/qemu-system-x86_64                               \
           -enable-kvm                                                     \
           -smp 4                                                          \
@@ -159,19 +158,13 @@
       '';
     in
     {
-      packages.${pkgs.system} = {
-        inherit kernel preinit initrd root boot;
+      apps.${pkgs.system}.default = {
+        type = "app";
+        program = "${boot}";
       };
 
-      # devShells.${pkgs.system}.default = pkgs.mkShell {
-      #   packages = with pkgs; [
-      #     execline
-      #     just
-      #     qemu
-      #     s6
-      #     s6-portable-utils
-      #     s6-rc
-      #   ];
-      # };
+      packages.${pkgs.system} = {
+        inherit initrd root;
+      };
     };
 }

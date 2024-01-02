@@ -2,7 +2,7 @@
 a very smol system, based on [[https://www.skarnet.org/software/s6/][s6]] & [[https://skarnet.org/software/s6-rc/][s6-rc]]
 
 ** How
-- start with =nix run github:42loco42/goblin#boot=
+- start with =nix run github:42loco42/goblin=
 - login with user =root= password =root=
 - shutdown with =poweroff=
 [[file:example.png]]
