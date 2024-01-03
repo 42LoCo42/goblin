@@ -86,6 +86,14 @@
           '';
         };
 
+        mount-devpts = svc.oneshot {
+          up = ''
+            foreground { mkdir -p /dev/pts }
+            mount -t devpts devpts /dev/pts
+          '';
+          deps = { inherit mount-dev; };
+        };
+
         mount-proc = svc.oneshot {
           up = ''
             foreground { mkdir -p /proc }
@@ -126,6 +134,11 @@
           '';
         };
 
+        dropbear = svc.longrun {
+          run = "${pkgs.dropbear}/bin/dropbear -EFr /etc/dropbear.key";
+          deps = { inherit mount-devpts; };
+        };
+
         link-modules = svc.oneshot {
           up = "ln -sfT ${modules}/lib /lib";
         };
@@ -135,7 +148,7 @@
         };
 
         all = svc.bundle {
-          inherit sysinit getty-console nix-daemon link-modules;
+          inherit sysinit getty-console nix-daemon dropbear link-modules;
         };
       };
 
