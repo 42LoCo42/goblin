@@ -156,6 +156,7 @@
         (with pkgs; [
           curl
           execline
+          htop
           nix
           pciutils
           s6
@@ -169,6 +170,8 @@
 
       profile = pkgs.writeText "profile" ''
         export CURL_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+        export LANG="en_US.UTF8"
+        export LOCALE_ARCHIVE=${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive
       '';
 
       init = pkgs.writeScript "init" ''
