@@ -25,6 +25,7 @@ status() {
 			find \
 				"$live/compiled/src/$i/contents.d" \
 				-type f -exec basename -a {} + |
+				sort |
 				tr '\n' ' '
 			echo
 		done
