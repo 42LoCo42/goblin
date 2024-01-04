@@ -85,6 +85,7 @@
             foreground { mkdir -p /dev }
             mount -t devtmpfs dev /dev
           '';
+          down = "umount -l /dev";
         };
 
         mount-devpts = svc.oneshot {
@@ -92,6 +93,7 @@
             foreground { mkdir -p /dev/pts }
             mount -t devpts devpts /dev/pts
           '';
+          down = "umount -l /dev/pts";
           deps = { inherit mount-dev; };
         };
 
@@ -100,6 +102,7 @@
             foreground { mkdir -p /proc }
             mount -t proc proc /proc
           '';
+          down = "umount -l /proc";
         };
 
         mount-sys = svc.oneshot {
@@ -107,6 +110,7 @@
             foreground { mkdir -p /sys }
             mount -t sysfs sys /sys
           '';
+          down = "umount -l /sys";
         };
 
         hostname = svc.oneshot {
@@ -120,7 +124,7 @@
 
         getty-console = svc.longrun {
           run = "getty 115200 /dev/console";
-          deps = { inherit mount-dev hostname; };
+          deps = { inherit mount-dev; };
           extra.down-signal = "SIGHUP";
         };
 
@@ -159,6 +163,7 @@
           pciutils
           s6
           s6-rc
+          (pkgs.writeScriptBin "s6" (builtins.readFile ./s6.sh)) # s6 helper
 
           busybox
         ]) [

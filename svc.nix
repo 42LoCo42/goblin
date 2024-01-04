@@ -51,6 +51,7 @@
       ${i}
       cd ..
       ${pkgs.s6-rc}/bin/s6-rc-compile $out svc
+      cp -r svc $out/src
     '')
     (pkgs.runCommand "mkDB" { })
   ];
