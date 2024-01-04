@@ -10,9 +10,11 @@ the initramfs is only about 334 KiB in size.
 
 ** look
 booting goblin and looking at services:
+
 [[file:boot.png]]
 
 starting dropbear and stopping the machine:
+
 [[file:ssh.png]]
 
 ** what
