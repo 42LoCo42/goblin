@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
 	(void) argc;
 	puts("[1;32mWelcome to goblin![m");
 
-	puts("[1;33mLoading kernel modules...[m");
+	puts("[1;33mLoading essential kernel modules...[m");
 	FILE* modlist = fopen(argv[1], "r");
 	if(modlist == NULL) err(1, "could not open %s", argv[1]);
 
@@ -47,13 +47,24 @@ int main(int argc, char** argv) {
 	nftw("/", del, 100, FTW_DEPTH);
 
 	puts("[1;33mMounting root filesystem...[m");
-	if(mkdir("rootfs", 0755) < 0) err(1, "mkdir failed");
-	if(mount("rootfs", "rootfs", "9p", 0, "trans=virtio") < 0)
-		err(1, "mount failed");
+
+	// create directories
+	if(mkdir("ro", 0755) < 0) err(1, "mkdir ro failed");
+	if(mkdir("rw", 0755) < 0) err(1, "mkdir rw failed");
+	if(mkdir("wk", 0755) < 0) err(1, "mkdir wk failed");
+	if(mkdir("ov", 0755) < 0) err(1, "mkdir ov failed");
+
+	// mount filesystems
+	if(mount("rootfs", "ro", "9p", 0, "trans=virtio") < 0)
+		err(1, "mount rootfs on ro failed");
+	if(mount(
+		   "rootfs", "ov", "overlay", 0, "lowerdir=ro,upperdir=rw,workdir=wk"
+	   ) < 0)
+		err(1, "mount rootfs overlay failed");
 
 	puts("[1;33mSwitching over...[m");
-	if(chdir("rootfs") < 0) err(1, "chdir rootfs failed");
-	if(mount(".", "/", NULL, MS_MOVE, NULL) < 0) err(1, "move mount failed");
-	if(chroot(".") < 0) err(1, "chroot . failed");
-	if(execl("init", "init", NULL) < 0) err(1, "exec init failed");
+	if(chdir("ov") < 0) err(1, "chdir failed");
+	if(chroot(".") < 0) err(1, "chroot failed");
+	execl("init", "init", NULL);
+	err(1, "exec init failed");
 }

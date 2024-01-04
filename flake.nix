@@ -5,17 +5,24 @@
       inherit (pkgs.lib) pipe;
 
       kernel = pkgs.linux_latest;
-      modules = pkgs.makeModulesClosure {
+      preModules = pkgs.makeModulesClosure {
         inherit kernel;
+        firmware = [ ];
         rootModules = [
           "9p"
           "9pnet_virtio"
-          "af_packet"
           "overlay"
-          "virtio_net"
           "virtio_pci"
         ];
+      };
+      modules = pkgs.makeModulesClosure {
+        inherit kernel;
         firmware = [ ];
+        rootModules = [
+          "af_packet" # DHCP
+          "virtio_net" # network access
+          "virtio_input" # keyboard
+        ];
       };
 
       paths = drv: "${pkgs.closureInfo { rootPaths = drv; }}/store-paths";
@@ -37,7 +44,7 @@
       '';
 
       preinit = pkgs.writeScript "preinit" ''
-        #!${tinit} ${modules}/insmod-list
+        #!${tinit} ${preModules}/insmod-list
       '';
 
       initrd = pkgs.runCommandLocal "init-img"
@@ -181,11 +188,12 @@
         #!${pkgs.execline}/bin/execlineb -P
         export PATH ${path}
 
-        foreground { echo "[1;33mMaking / writeable...[m" }
-        foreground { mount -t tmpfs tmpfs /run }
-        foreground { mkdir -p /run/mnt /run/rw /run/wk }
-        foreground { mount -t overlay -o lowerdir=/,upperdir=/run/rw,workdir=/run/wk rootfs /run/mnt }
-        chroot /run/mnt
+        foreground { echo "[1;33mLoading additional kernel modules...[m" }
+        foreground { ln -s ${modules}/lib /lib }
+        foreground { pipeline {
+          redirfd -r 0 ${modules}/insmod-list
+          xargs basename -as .ko.xz }
+          xargs modprobe -a }
 
         foreground { ln -s ${profile} /etc/profile }
 
