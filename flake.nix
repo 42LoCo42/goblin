@@ -10,6 +10,7 @@
         rootModules = [
           "9p"
           "9pnet_virtio"
+          "af_packet"
           "overlay"
           "virtio_net"
           "virtio_pci"
@@ -112,12 +113,9 @@
           up = "hostname goblin";
         };
 
-        network = svc.oneshot {
-          up = ''
-            foreground { ip link set dev eth0 up }
-            foreground { ip addr add dev eth0 192.168.122.42/24 }
-            foreground { ip route add default via 192.168.122.1 }
-          '';
+        network = svc.longrun {
+          run = "${pkgs.busybox}/bin/udhcpc -f";
+          deps = { inherit hostname; };
         };
 
         getty-console = svc.longrun {
@@ -223,6 +221,8 @@
           -nographic                                                      \
           -no-reboot                                                      \
           -virtfs local,path=${root},mount_tag=rootfs,security_model=none \
+          -netdev user,id=net0,hostfwd=tcp::2222-:22                      \
+          -device virtio-net-pci,netdev=net0                              \
           -kernel ${kernel}/bzImage                                       \
           -initrd ${initrd}                                               \
           -append "console=ttyS0 panic=-1 loglevel=4"

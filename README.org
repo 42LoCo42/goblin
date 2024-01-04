@@ -5,6 +5,7 @@ the initramfs is only about 334 KiB in size.
 ** how
 - start with =nix run github:42loco42/goblin=
 - login with user =root= password =root=
+- SSH with =ssh -p 2222 root@localhost=
 - shutdown with =poweroff=
 [[file:example.png]]
 
