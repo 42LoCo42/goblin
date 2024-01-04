@@ -20,8 +20,8 @@
         firmware = [ ];
         rootModules = [
           "af_packet" # DHCP
-          "virtio_net" # network access
           "virtio_input" # keyboard
+          "virtio_net" # network access
         ];
       };
 
@@ -120,6 +120,13 @@
           down = "umount -l /sys";
         };
 
+        mount-tmp = svc.oneshot {
+          up = ''
+            foreground { mkdir -p /tmp }
+            mount -t tmpfs tmpfs /tmp
+          '';
+        };
+
         hostname = svc.oneshot {
           up = "hostname goblin";
         };
@@ -141,6 +148,7 @@
             fdmove -c 2 1
             ${pkgs.nix}/bin/nix daemon
           '';
+          deps = { inherit mount-tmp; };
         };
 
         dropbear = svc.longrun {
@@ -148,16 +156,30 @@
           deps = { inherit mount-devpts; };
         };
 
-        link-modules = svc.oneshot {
-          up = "ln -sfT ${modules}/lib /lib";
+        link-certs = svc.oneshot {
+          up = ''
+            foreground { mkdir -p /etc/ssl/certs }
+            foreground { ln -sfT
+              ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+              /etc/ssl/certs/ca-certificates.crt
+            }
+          '';
         };
 
         sysinit = svc.bundle {
           inherit mount-dev mount-proc mount-sys hostname network;
         };
 
+        misc-setup = svc.bundle {
+          inherit link-certs;
+        };
+
+        daemons = svc.bundle {
+          inherit getty-console nix-daemon dropbear;
+        };
+
         all = svc.bundle {
-          inherit sysinit getty-console nix-daemon dropbear link-modules;
+          inherit sysinit misc-setup daemons;
         };
       };
 
@@ -179,7 +201,6 @@
       ];
 
       profile = pkgs.writeText "profile" ''
-        export CURL_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
         export LANG="en_US.UTF8"
         export LOCALE_ARCHIVE=${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive
       '';
@@ -229,10 +250,11 @@
         ${pkgs.qemu}/bin/qemu-system-x86_64                               \
           -enable-kvm                                                     \
           -smp 4                                                          \
-          -m 1G                                                           \
+          -m 8G                                                           \
           -cpu host                                                       \
           -nographic                                                      \
           -no-reboot                                                      \
+          -device virtio-keyboard                                         \
           -virtfs local,path=${root},mount_tag=rootfs,security_model=none \
           -netdev user,id=net0,hostfwd=tcp::2222-:22                      \
           -device virtio-net-pci,netdev=net0                              \
