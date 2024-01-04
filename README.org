@@ -7,7 +7,13 @@ the initramfs is only about 334 KiB in size.
 - login with user =root= password =root=
 - SSH with =ssh -p 2222 root@localhost=
 - shutdown with =poweroff=
-[[file:example.png]]
+
+** look
+booting goblin and looking at services:
+[[file:boot.png]]
+
+starting dropbear and stopping the machine:
+[[file:ssh.png]]
 
 ** what
 - [[https://www.busybox.net/][busybox]]
@@ -15,4 +21,5 @@ the initramfs is only about 334 KiB in size.
   - [[https://skarnet.org/software/execline/][execline]]
   - [[https://skarnet.org/software/s6/][s6]]
   - [[https://skarnet.org/software/s6-rc/][s6-rc]]
-- [[https://tukaani.org/xz/][liblzma]]
+- [[https://tukaani.org/xz/][liblzma]] (for loading compressed kernel modules in =tinit=)
+- [[https://matt.ucc.asn.au/dropbear/dropbear.html][dropbear]] (SSH daemon)
