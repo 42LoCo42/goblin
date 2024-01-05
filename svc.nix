@@ -21,7 +21,7 @@
     (builtins.attrNames)
     (map (i: "touch dependencies.d/${i}"))
     (builtins.concatStringsSep "\n")
-  ] + "\n" + pipe extra [
+  ] + "\n" + pipe ({ timeout-kill = "3000"; } // extra) [
     (mapAttrsToList (name: text: ''
       cp ${pkgs.writeText name (text + "\n")} ${name}
     ''))

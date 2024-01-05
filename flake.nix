@@ -20,12 +20,13 @@
         firmware = [ ];
         rootModules = [
           "af_packet" # DHCP
-          "virtio_input" # keyboard
           "virtio_net" # network access
         ];
       };
 
       paths = drv: "${pkgs.closureInfo { rootPaths = drv; }}/store-paths";
+
+      # INITRD #################################################################
 
       tinit = pkgs.runCommandLocal "tinit"
         {
@@ -62,31 +63,34 @@
         zstd -9 < $img > $out
       '';
 
-      poweroff = with pkgs; writeScript "poweroff" ''
-        #!${execline}/bin/execlineb -P
-        kill -SIGTERM 1
-      '';
+      # ROOT FILESYSTEM ########################################################
 
-      finish = with pkgs; writeScript "finish" ''
-        #!${execline}/bin/execlineb -P
-        foreground { echo "\n[1;33mKilling all processes...[m" }
-        foreground { kill -SIGKILL -1 }
-        foreground { echo "[1;33mUnmounting filesystems...[m" }
-        foreground { umount -rat nodevtmpfs,proc,tmpfs,sysfs }
-        foreground { mount -o remount,ro / }
-        foreground { sync }
-        foreground { echo "[1;32mGoodbye![m" }
-        poweroff -f
-      '';
+      path = pipe
+        (with pkgs; [
+          curl
+          execline
+          htop
+          nix
+          pciutils
+          s6
+          s6-rc
+          (pkgs.writeScriptBin "s6" (builtins.readFile ./s6.sh)) # s6 helper
 
-      invfork = pkgs.runCommandLocal "invfork"
-        { nativeBuildInputs = with pkgs; [ gcc musl ]; } ''
-        gcc -Wall -Wextra -Werror -O3 -static -flto ${./invfork.c} -o $out
-        strip $out
-      '';
+          busybox
+        ]) [
+        (map (i: "${i}/bin"))
+        (builtins.concatStringsSep ":")
+      ];
 
-      svc = import ./svc.nix { inherit pkgs; };
-      svcDB = svc.mkDB rec {
+      svcDB = let svc = import ./svc.nix { inherit pkgs; }; in svc.mkDB rec {
+        mount-bin = svc.oneshot {
+          up = ''
+            foreground { echo "[1;33mMounting bin overlay...[m" }
+            foreground { mkdir -p /bin }
+            mount -t overlay -o lowerdir=${path} bin /bin
+          '';
+        };
+
         mount-dev = svc.oneshot {
           up = ''
             foreground { mkdir -p /dev }
@@ -131,9 +135,17 @@
           up = "hostname goblin";
         };
 
+        load-modules = svc.oneshot {
+          up = ''
+            foreground { echo "[1;33mLoading additional kernel modules...[m" }
+            redirfd -r 0 ${modules}/insmod-list
+            xargs ${pkgs.kmod}/bin/modprobe -ad ${modules}
+          '';
+        };
+
         network = svc.longrun {
           run = "${pkgs.busybox}/bin/udhcpc -f";
-          deps = { inherit hostname; };
+          deps = { inherit hostname load-modules; };
         };
 
         getty-console = svc.longrun {
@@ -143,11 +155,7 @@
         };
 
         nix-daemon = svc.longrun {
-          run = ''
-            redirfd -a 1 /run/nix-daemon.log
-            fdmove -c 2 1
-            ${pkgs.nix}/bin/nix daemon
-          '';
+          run = "${pkgs.nix}/bin/nix daemon";
           deps = { inherit mount-tmp; };
         };
 
@@ -156,79 +164,100 @@
           deps = { inherit mount-devpts; };
         };
 
-        link-certs = svc.oneshot {
+        setup-etc-profile =
+          let
+            profile = pkgs.writeText "profile" ''
+              export LANG="en_US.UTF8"
+              export LOCALE_ARCHIVE=${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive
+            '';
+          in
+          svc.oneshot {
+            up = "ln -s ${profile} /etc/profile";
+          };
+
+        setup-etc-ssl = svc.oneshot {
           up = ''
             foreground { mkdir -p /etc/ssl/certs }
-            foreground { ln -sfT
+            ln -sfT
               ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
               /etc/ssl/certs/ca-certificates.crt
-            }
           '';
         };
 
         sysinit = svc.bundle {
-          inherit mount-dev mount-proc mount-sys hostname network;
+          inherit mount-bin mount-dev mount-proc mount-sys hostname load-modules;
         };
 
-        misc-setup = svc.bundle {
-          inherit link-certs;
+        setup-etc = svc.bundle {
+          inherit setup-etc-profile setup-etc-ssl;
         };
 
         daemons = svc.bundle {
-          inherit getty-console nix-daemon dropbear;
+          inherit getty-console nix-daemon dropbear network;
         };
 
         all = svc.bundle {
-          inherit sysinit misc-setup daemons;
+          inherit sysinit setup-etc daemons;
         };
       };
 
-      path = pipe
-        (with pkgs; [
-          curl
-          execline
-          htop
-          nix
-          pciutils
-          s6
-          s6-rc
-          (pkgs.writeScriptBin "s6" (builtins.readFile ./s6.sh)) # s6 helper
+      poweroff-act = with pkgs; writeScript "poweroff" ''
+        #!${execline}/bin/execlineb -P
+        poweroff -f
+      '';
 
-          busybox
-        ]) [
-        (map (i: "${i}/bin"))
-        (builtins.concatStringsSep ":")
-      ];
+      poweroff = with pkgs; writeScript "poweroff" ''
+        #!${execline}/bin/execlineb -P
+        foreground { ln -sfT ${poweroff-act} /run/s6/action }
+        s6-svscanctl -t /run/s6/scan
+      '';
 
-      profile = pkgs.writeText "profile" ''
-        export LANG="en_US.UTF8"
-        export LOCALE_ARCHIVE=${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive
+      reboot-act = with pkgs; writeScript "reboot" ''
+        #!${execline}/bin/execlineb -P
+        reboot -f
+      '';
+
+      reboot = with pkgs; writeScript "reboot" ''
+        #!${execline}/bin/execlineb -P
+        foreground { ln -sfT ${reboot-act} /run/s6/action }
+        s6-svscanctl -t /run/s6/scan
+      '';
+
+      finish = with pkgs; writeScript "finish" ''
+        #!${execline}/bin/execlineb -P
+        redirfd -a 1 /dev/console
+        fdmove -c 2 1
+        foreground { echo "\n[1;33mKilling all processes...[m" }
+        foreground { kill -SIGKILL -1 }
+        foreground { echo "[1;33mUnmounting filesystems...[m" }
+        foreground { umount -rat nodevtmpfs,proc,tmpfs,sysfs }
+        foreground { mount -o remount,ro / }
+        foreground { sync }
+        foreground { echo "[1;32mGoodbye![m" }
+        /run/s6/action
+      '';
+
+      invfork = pkgs.runCommandLocal "invfork"
+        { nativeBuildInputs = with pkgs; [ gcc musl ]; } ''
+        gcc -Wall -Wextra -Werror -O3 -static -flto ${./invfork.c} -o $out
+        strip $out
       '';
 
       init = pkgs.writeScript "init" ''
         #!${pkgs.execline}/bin/execlineb -P
         export PATH ${path}
 
-        foreground { echo "[1;33mLoading additional kernel modules...[m" }
-        foreground { ln -s ${modules}/lib /lib }
-        foreground { pipeline {
-          redirfd -r 0 ${modules}/insmod-list
-          xargs basename -as .ko.xz }
-          xargs modprobe -a }
-
-        foreground { ln -s ${profile} /etc/profile }
-
-        foreground { echo "[1;33mMounting bin overlay...[m" }
-        foreground { mkdir bin }
-        foreground { sh -c "mount -t overlay -o lowerdir=$PATH bin bin" }
-        export PATH /bin
-
         foreground { echo "[1;33mStarting the system supervisor...[m" }
         foreground { mount -t tmpfs tmpfs run }
-        foreground { mkdir -p /run/s6/scan/.s6-svscan }
+        foreground { mkdir -p /run/s6/scan/.s6-svscan /run }
         foreground { ln -s ${poweroff} /run/s6/scan/.s6-svscan/SIGUSR2 }
+        foreground { ln -s ${reboot}   /run/s6/scan/.s6-svscan/SIGTERM }
         foreground { ln -s ${finish}   /run/s6/scan/.s6-svscan/finish  }
-        ${invfork} { s6-svscan /run/s6/scan }
+        ${invfork} {
+          redirfd -a 1 /run/s6/log
+          fdmove -c 2 1
+          s6-svscan /run/s6/scan
+        }
 
         foreground { echo "[1;33mStarting all services...[m" }
         foreground { s6-rc-init -c ${svcDB} -l /run/s6/live /run/s6/scan }
@@ -253,14 +282,13 @@
           -m 8G                                                           \
           -cpu host                                                       \
           -nographic                                                      \
-          -no-reboot                                                      \
           -device virtio-keyboard                                         \
           -virtfs local,path=${root},mount_tag=rootfs,security_model=none \
           -netdev user,id=net0,hostfwd=tcp::2222-:22                      \
           -device virtio-net-pci,netdev=net0                              \
           -kernel ${kernel}/bzImage                                       \
           -initrd ${initrd}                                               \
-          -append "console=ttyS0 panic=-1 loglevel=4"
+          -append "console=ttyS0 panic=5 loglevel=4"
       '';
     in
     {
